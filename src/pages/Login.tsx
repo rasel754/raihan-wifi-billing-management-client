@@ -31,7 +31,12 @@ const Login = () => {
         navigate(user.role === 'admin' ? '/admin/dashboard' : '/employee/dashboard', { replace: true });
       }
     } catch (err: any) {
-      toast({ title: 'Login Failed', description: err.message, variant: 'destructive' });
+      const message =
+        err?.response?.data?.message ??
+        err?.response?.data?.error ??
+        err?.message ??
+        'Something went wrong. Please try again.';
+      toast({ title: 'Login Failed', description: message, variant: 'destructive' });
     } finally {
       setLoading(false);
     }

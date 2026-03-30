@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { AuthService } from '@/services/auth.service';
+import api from '@/services/api';
 
 export type Role = 'admin' | 'employee';
 
@@ -25,38 +26,73 @@ export const useAuth = () => {
   return ctx;
 };
 
-// Mock users
-const MOCK_USERS = [
-  { id: '1', phone: '01700000001', password: 'admin123', role: 'admin' as Role, name: 'Admin User' },
-  { id: '2', phone: '01700000002', password: 'emp123', role: 'employee' as Role, name: 'Employee User' },
-];
-
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Restore session from localStorage on mount
   useEffect(() => {
-    const stored = localStorage.getItem('rs_wifi_user');
-    if (stored) {
-      try { setUser(JSON.parse(stored)); } catch { localStorage.removeItem('rs_wifi_user'); }
+    const storedUser = localStorage.getItem('rs_wifi_user');
+    const storedToken = localStorage.getItem('rs_wifi_token');
+    if (storedUser && storedToken) {
+      try {
+        const parsedUser = JSON.parse(storedUser);
+        setUser(parsedUser);
+        // Make sure the token is set on the api instance header for subsequent requests
+        api.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`;
+      } catch {
+        localStorage.removeItem('rs_wifi_user');
+        localStorage.removeItem('rs_wifi_token');
+      }
     }
     setIsLoading(false);
   }, []);
 
   const login = async (phone: string, password: string) => {
-    // Simulate API call
-    await new Promise(r => setTimeout(r, 800));
-    const found = MOCK_USERS.find(u => u.phone === phone && u.password === password);
-    if (!found) throw new Error('Invalid phone number or password');
-    const { password: _, ...userData } = found;
-    localStorage.setItem('rs_wifi_token', 'mock-jwt-token');
-    localStorage.setItem('rs_wifi_user', JSON.stringify(userData));
-    setUser(userData);
+    const response = await AuthService.login(phone, password);
+
+    // Backend returns: { success, message, data: { token, role } }
+    const payload = response?.data ?? response;
+    const accessToken: string = payload?.accessToken ?? payload?.token;
+
+    if (!accessToken) {
+      throw new Error('Invalid response from server');
+    }
+
+    // Decode JWT to get user info (backend doesn't return a user object)
+    let userData = payload?.user;
+    if (!userData) {
+      try {
+        const jwtPayload = JSON.parse(atob(accessToken.split('.')[1]));
+        userData = {
+          _id: jwtPayload.id,
+          phone: jwtPayload.phone,
+          role: jwtPayload.role,
+          name: jwtPayload.name ?? 'User',
+        };
+      } catch {
+        throw new Error('Failed to parse authentication token');
+      }
+    }
+
+    const normalizedUser: User = {
+      id: userData._id ?? userData.id,
+      phone: userData.phone,
+      // Backend sends uppercase role ("ADMIN"), normalize to lowercase
+      role: (userData.role as string).toLowerCase() as Role,
+      name: userData.name,
+    };
+
+    localStorage.setItem('rs_wifi_token', accessToken);
+    localStorage.setItem('rs_wifi_user', JSON.stringify(normalizedUser));
+    api.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
+    setUser(normalizedUser);
   };
 
   const logout = () => {
     localStorage.removeItem('rs_wifi_token');
     localStorage.removeItem('rs_wifi_user');
+    delete api.defaults.headers.common['Authorization'];
     setUser(null);
   };
 

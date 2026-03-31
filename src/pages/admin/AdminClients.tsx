@@ -1,10 +1,10 @@
-import { useState, useMemo } from 'react';
-import { getClients, addClient, updateClient, deleteClient, Client } from '@/data/mockData';
+import { useState, useEffect } from 'react';
+import { ClientService, IClient, CreateClientData } from '@/services/client.service';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
@@ -15,22 +15,41 @@ import { useToast } from '@/hooks/use-toast';
 const ITEMS_PER_PAGE = 8;
 
 const AdminClients = () => {
-  const [clients, setClients] = useState(getClients);
+  const [clients, setClients] = useState<IClient[]>([]);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [editingClient, setEditingClient] = useState<Client | null>(null);
-  const [form, setForm] = useState({ name: '', phone: '', holding: '', cardNumber: '', billingStatus: 'due' as 'paid' | 'due', billingMonth: '2026-03' });
+  const [editingClient, setEditingClient] = useState<IClient | null>(null);
+  const [form, setForm] = useState({ name: '', phone: '', holding: '', cardNumber: '', billingStatus: 'due', billingMonth: '2026-03' });
   const { toast } = useToast();
 
-  const filtered = useMemo(() => {
-    const q = search.toLowerCase();
-    return clients.filter(c => c.name.toLowerCase().includes(q) || c.phone.includes(q));
-  }, [clients, search]);
+  const fetchClients = async () => {
+    try {
+      const result = await ClientService.getAllClients({ searchTerm: search, page, limit: ITEMS_PER_PAGE });
+      setClients(result.data || []);
+      setTotal(result.meta?.total || 0);
+    } catch (error) {
+      toast({ title: 'Error', description: 'Failed to fetch clients', variant: 'destructive' });
+    }
+  };
 
-  const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
-  const paginated = filtered.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
+  // Fetch clients when search or page changes
+  useEffect(() => {
+    // Add a small debounce to search if needed, but for now simple fetch is okay
+    const delayDebounceFn = setTimeout(() => {
+      fetchClients();
+    }, 300);
+    return () => clearTimeout(delayDebounceFn);
+  }, [search, page]);
+
+  const totalPages = Math.ceil(total / ITEMS_PER_PAGE);
+
+  const getLatestStatus = (client: IClient) => {
+    if (!client.billingMonths || client.billingMonths.length === 0) return 'due';
+    return client.billingMonths[client.billingMonths.length - 1].status;
+  };
 
   const openAdd = () => {
     setEditingClient(null);
@@ -38,34 +57,62 @@ const AdminClients = () => {
     setDialogOpen(true);
   };
 
-  const openEdit = (c: Client) => {
+  const openEdit = (c: IClient) => {
     setEditingClient(c);
-    setForm({ name: c.name, phone: c.phone, holding: c.holding, cardNumber: c.cardNumber, billingStatus: c.billingStatus, billingMonth: c.billingMonth });
+    const latestStatus = getLatestStatus(c);
+    const latestMonth = c.billingMonths && c.billingMonths.length > 0 ? c.billingMonths[c.billingMonths.length - 1].month : '2026-03';
+    setForm({ name: c.name, phone: c.phone, holding: c.holding, cardNumber: c.cardNumber, billingStatus: latestStatus, billingMonth: latestMonth });
     setDialogOpen(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!form.name.trim() || !form.phone.trim()) {
       toast({ title: 'Error', description: 'Name and phone are required.', variant: 'destructive' });
       return;
     }
-    if (editingClient) {
-      updateClient(editingClient.id, form);
-      toast({ title: 'Updated', description: 'Client updated successfully.' });
-    } else {
-      addClient(form);
-      toast({ title: 'Added', description: 'Client added successfully.' });
+    
+    try {
+      if (editingClient) {
+        await ClientService.updateClient(editingClient._id, {
+          name: form.name,
+          phone: form.phone,
+          holding: form.holding,
+          cardNumber: form.cardNumber,
+        });
+        toast({ title: 'Updated', description: 'Client updated successfully.' });
+      } else {
+        const payload: CreateClientData = {
+          name: form.name,
+          phone: form.phone,
+          holding: form.holding,
+          cardNumber: form.cardNumber,
+          billingMonths: [{ month: form.billingMonth, status: form.billingStatus }]
+        };
+        await ClientService.createClient(payload);
+        toast({ title: 'Added', description: 'Client added successfully.' });
+      }
+      fetchClients();
+      setDialogOpen(false);
+    } catch (error: any) {
+      toast({ title: 'Error', description: error.response?.data?.message || 'Operation failed', variant: 'destructive' });
     }
-    setClients(getClients());
-    setDialogOpen(false);
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (deleteId) {
-      deleteClient(deleteId);
-      setClients(getClients());
-      toast({ title: 'Deleted', description: 'Client deleted.' });
-      setDeleteId(null);
+      try {
+        await ClientService.deleteClient(deleteId);
+        toast({ title: 'Deleted', description: 'Client deleted.' });
+        setDeleteId(null);
+        // If we delete the last item on a page, we might want to go back a page
+        if (clients.length === 1 && page > 1) {
+          setPage(page - 1);
+        } else {
+          fetchClients();
+        }
+      } catch (error: any) {
+        toast({ title: 'Error', description: error.response?.data?.message || 'Failed to delete client', variant: 'destructive' });
+      }
     }
   };
 
@@ -74,7 +121,7 @@ const AdminClients = () => {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Clients</h1>
-          <p className="text-sm text-muted-foreground">{clients.length} total clients</p>
+          <p className="text-sm text-muted-foreground">{total} total clients</p>
         </div>
         <Button onClick={openAdd}><Plus className="mr-2 h-4 w-4" />Add Client</Button>
       </div>
@@ -87,7 +134,7 @@ const AdminClients = () => {
           </div>
         </CardHeader>
         <CardContent className="p-0">
-          {paginated.length === 0 ? (
+          {clients.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
               <Users className="h-10 w-10 mb-2" />
               <p>No clients found</p>
@@ -106,23 +153,25 @@ const AdminClients = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {paginated.map(c => (
-                    <TableRow key={c.id}>
+                  {clients.map(c => {
+                    const status = getLatestStatus(c);
+                    return (
+                    <TableRow key={c._id}>
                       <TableCell className="font-medium">{c.name}</TableCell>
                       <TableCell>{c.phone}</TableCell>
                       <TableCell className="hidden md:table-cell">{c.holding}</TableCell>
                       <TableCell className="hidden md:table-cell">{c.cardNumber}</TableCell>
                       <TableCell>
-                        <Badge variant={c.billingStatus === 'paid' ? 'default' : 'destructive'} className={c.billingStatus === 'paid' ? 'bg-success hover:bg-success/90' : ''}>
-                          {c.billingStatus === 'paid' ? 'Paid' : 'Due'}
+                        <Badge variant={status === 'paid' ? 'default' : 'destructive'} className={status === 'paid' ? 'bg-success hover:bg-success/90' : ''}>
+                          {status === 'paid' ? 'Paid' : 'Due'}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
                         <Button variant="ghost" size="icon" onClick={() => openEdit(c)}><Pencil className="h-4 w-4" /></Button>
-                        <Button variant="ghost" size="icon" onClick={() => setDeleteId(c.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => setDeleteId(c._id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                       </TableCell>
                     </TableRow>
-                  ))}
+                  )})}
                 </TableBody>
               </Table>
             </div>
@@ -152,17 +201,25 @@ const AdminClients = () => {
               <div className="space-y-2"><Label>Holding</Label><Input value={form.holding} onChange={e => setForm(f => ({ ...f, holding: e.target.value }))} /></div>
               <div className="space-y-2"><Label>Card Number</Label><Input value={form.cardNumber} onChange={e => setForm(f => ({ ...f, cardNumber: e.target.value }))} /></div>
             </div>
-            <div className="space-y-2">
-              <Label>Billing Status</Label>
-              <Select value={form.billingStatus} onValueChange={(v: 'paid' | 'due') => setForm(f => ({ ...f, billingStatus: v }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="paid">Paid</SelectItem>
-                  <SelectItem value="due">Due</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {!editingClient && (
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2"><Label>Initial Month</Label><Input value={form.billingMonth} onChange={e => setForm(f => ({ ...f, billingMonth: e.target.value }))} /></div>
+                <div className="space-y-2">
+                  <Label>Status</Label>
+                  <Select value={form.billingStatus} onValueChange={(v: 'paid' | 'due') => setForm(f => ({ ...f, billingStatus: v }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="paid">Paid</SelectItem>
+                      <SelectItem value="due">Due</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
           </div>
+          <DialogHeader>
+           {editingClient && <p className="text-xs text-muted-foreground">Note: Billing status can be managed from the Billing page.</p>}
+          </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
             <Button onClick={handleSave}>{editingClient ? 'Update' : 'Add'}</Button>

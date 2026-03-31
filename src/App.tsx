@@ -11,7 +11,7 @@ import AdminClients from "@/pages/admin/AdminClients";
 import AdminEmployees from "@/pages/admin/AdminEmployees";
 import AdminBilling from "@/pages/admin/AdminBilling";
 import EmployeeDashboard from "@/pages/employee/EmployeeDashboard";
-import EmployeeClients from "@/pages/employee/EmployeeClients";
+import EmployeeBilling from "@/pages/employee/EmployeeBilling";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -54,9 +54,9 @@ const App = () => (
                 <DashboardLayout><EmployeeDashboard /></DashboardLayout>
               </ProtectedRoute>
             } />
-            <Route path="/employee/clients" element={
+            <Route path="/employee/billing" element={
               <ProtectedRoute allowedRoles={['employee']}>
-                <DashboardLayout><EmployeeClients /></DashboardLayout>
+                <DashboardLayout><EmployeeBilling /></DashboardLayout>
               </ProtectedRoute>
             } />
 

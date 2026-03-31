@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Search, Receipt, Calendar } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
-const AdminBilling = () => {
+const EmployeeBilling = () => {
   const [clients, setClients] = useState<IClient[]>([]);
   const [search, setSearch] = useState('');
   
@@ -140,4 +140,4 @@ const AdminBilling = () => {
   );
 };
 
-export default AdminBilling;
+export default EmployeeBilling;

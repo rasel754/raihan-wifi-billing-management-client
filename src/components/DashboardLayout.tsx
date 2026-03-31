@@ -22,7 +22,7 @@ const adminNav: NavItem[] = [
 
 const employeeNav: NavItem[] = [
   { label: 'Dashboard', path: '/employee/dashboard', icon: LayoutDashboard },
-  { label: 'Clients', path: '/employee/clients', icon: Users },
+  { label: 'Billing', path: '/employee/billing', icon: Receipt },
 ];
 
 const DashboardLayout = ({ children }: { children: React.ReactNode }) => {

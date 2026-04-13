@@ -2,8 +2,8 @@ import axios from 'axios';
 
 // Base API configuration
 const api = axios.create({
-  // baseURL: 'http://localhost:5000/api/v1',
-  baseURL: 'https://raihan-wifi-billing-management-serv.vercel.app/api/v1',
+  baseURL: 'http://localhost:5000/api/v1',
+  // baseURL: 'https://raihan-wifi-billing-management-serv.vercel.app/api/v1',
   headers: {
     'Content-Type': 'application/json',
   },

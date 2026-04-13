@@ -5,6 +5,16 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Search, Receipt, Calendar } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -15,6 +25,14 @@ const EmployeeBilling = () => {
   // Default to current year-month YYYY-MM
   const currentMonthStr = new Date().toISOString().slice(0, 7);
   const [selectedMonth, setSelectedMonth] = useState(currentMonthStr);
+  
+  const [confirmDialog, setConfirmDialog] = useState({
+    isOpen: false,
+    clientId: '',
+    newStatus: '',
+    hasExistingBill: false,
+    clientName: ''
+  });
   
   const { toast } = useToast();
 
@@ -38,7 +56,18 @@ const EmployeeBilling = () => {
     return clients.filter(c => c.name.toLowerCase().includes(q) || c.phone.includes(q));
   }, [clients, search]);
 
-  const handleStatusChange = async (clientId: string, newStatus: string, hasExistingBill: boolean) => {
+  const promptStatusChange = (clientId: string, newStatus: string, hasExistingBill: boolean, clientName: string) => {
+    setConfirmDialog({
+      isOpen: true,
+      clientId,
+      newStatus,
+      hasExistingBill,
+      clientName
+    });
+  };
+
+  const executeStatusChange = async () => {
+    const { clientId, newStatus, hasExistingBill } = confirmDialog;
     try {
       if (hasExistingBill) {
         await ClientService.updateBillingStatus(clientId, selectedMonth, { status: newStatus });
@@ -50,6 +79,8 @@ const EmployeeBilling = () => {
       fetchClients();
     } catch (error: any) {
       toast({ title: 'Error', description: error.response?.data?.message || 'Failed to update billing', variant: 'destructive' });
+    } finally {
+      setConfirmDialog(prev => ({ ...prev, isOpen: false }));
     }
   };
 
@@ -116,7 +147,7 @@ const EmployeeBilling = () => {
                         <TableCell>
                           <Select 
                             value={status} 
-                            onValueChange={(v) => handleStatusChange(c._id, v, hasExistingBill)}
+                            onValueChange={(v) => promptStatusChange(c._id, v, hasExistingBill, c.name)}
                           >
                             <SelectTrigger className="w-32">
                               <SelectValue placeholder="Set Status..." />
@@ -136,6 +167,21 @@ const EmployeeBilling = () => {
           )}
         </CardContent>
       </Card>
+
+      <AlertDialog open={confirmDialog.isOpen} onOpenChange={(open) => setConfirmDialog(prev => ({ ...prev, isOpen: open }))}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm Billing Status</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to change the billing status for <span className="font-semibold text-foreground">{confirmDialog.clientName}</span> to <span className="font-semibold text-foreground capitalize">{confirmDialog.newStatus}</span> for the month of {selectedMonth}?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={executeStatusChange}>Confirm</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

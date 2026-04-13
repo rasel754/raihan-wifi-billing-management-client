@@ -1,9 +1,10 @@
 import axios from 'axios';
 
+const isDevelopment = import.meta.env.MODE === 'development';
+
 // Base API configuration
 const api = axios.create({
-  baseURL: 'http://localhost:5000/api/v1',
-  // baseURL: 'https://raihan-wifi-billing-management-serv.vercel.app/api/v1',
+  baseURL: isDevelopment ? 'http://localhost:5000/api/v1' : 'https://raihan-wifi-billing-management-serv.vercel.app/api/v1',
   headers: {
     'Content-Type': 'application/json',
   },
